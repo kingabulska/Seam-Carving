@@ -1,0 +1,1 @@
+C:\Users\Kinga\IdeaProjects\SeamCarving_new\Seam Carving\task\build\classes\kotlin\main\seamcarving\MainKt.class;C:\Users\Kinga\IdeaProjects\SeamCarving_new\Seam Carving\task\build\classes\kotlin\main\seamcarving\Test.class
