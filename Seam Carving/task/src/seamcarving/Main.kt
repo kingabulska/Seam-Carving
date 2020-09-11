@@ -2,45 +2,145 @@ package seamcarving
 
 import java.awt.Color
 import java.awt.image.BufferedImage
+import java.awt.image.BufferedImage.TYPE_INT_RGB
 import java.io.File
 import javax.imageio.ImageIO
 
 
 fun main(args: Array<String>) {
-    //println(args.joinToString())
+
     var inputImage = args[1]
     val outputImage = args[3]
+    val newWidth = args[5].toInt()
+    val newHeigt = args[7].toInt()
 
-    val file = File(inputImage)
-    //println(file.exists())
-    //inputImage = "test/" + inputImage
-    val img = ImageIO.read(File(inputImage))
 
-    // Get image width and height
-    val width: Int = img.width
-    val height: Int = img.height
+    var img = ImageIO.read(File(inputImage))
 
-    val energies = countImageEnergy(width, height, img)
-    //setIntensity(img, energies, height, width )
-    //findSeam(energies, height, width, img)
-    val distances = createDistancesArray(energies, height, width)
-    val shortest = shortestPath(distances, width, height, energies)
-    drawPath(shortest.toTypedArray(), img, height, width)
-
-    //val dirs = inputImage.replaceAfterLast("/", "")
-    //File(dirs).mkdirs()
+    img = removeVerticalSeam(img, newWidth)
+    img = removeHorizontalSeam(img, newHeigt)
 
     ImageIO.write(img, "png", File(outputImage))
+}
 
+fun removeHorizontalSeam(img: BufferedImage,  reduceHeightBy: Int): BufferedImage {
+
+    var width = img.width
+    var height = img.height
+    var img = img
+    val newHeightValue = height - reduceHeightBy
+    var imageList = imageToRGBList(img)
+
+    while (height != newHeightValue) {
+        val energies = countImageEnergy(img)
+
+        val distances = createDistancesArrayHorizonatl(energies)
+        val shortest = shortestPathHorizontal(distances)
+
+        imageList = imageToRGBList(img)
+
+        for (x in 0 until width) {
+
+            for (y in shortest[x] until height - 1) {
+                imageList[x][y] = imageList[x][y + 1]
+            }
+
+        }
+
+        img = rgbListToImage(imageList)
+
+        height --
+    }
+    var cutList: MutableList<MutableList<Int>> = mutableListOf<MutableList<Int>>()
+
+    imageList = imageToRGBList(img)
+
+    for (x in 0 until width){
+        val current = mutableListOf<Int>()
+        cutList.add(current)
+
+        for(y in 0 until newHeightValue){
+            current.add(imageList[x][y])
+        }
+    }
+
+    img = rgbListToImage(cutList)
+
+    return img
 
 }
-fun createDistancesArray(energies: Array<DoubleArray>, height: Int, width: Int): Array<DoubleArray> {
+fun removeVerticalSeam(img: BufferedImage, reduceWidthBy: Int): BufferedImage {
+
+    var width = img.width
+    val height = img.height
+    var img = img
+    val newWidthValue = width - reduceWidthBy
+    var imageList = imageToRGBList(img)
+    while (width != newWidthValue) {
+        val energies = countImageEnergy( img)
+
+        val distances = createDistancesArray(energies)
+        val shortest = shortestPath(distances)
+
+        imageList = imageToRGBList(img)
+
+        for (y in 0 until height) {
+
+            for (x in shortest[y] until width - 1) {
+                imageList[x][y] = imageList[x + 1][y]
+            }
+
+        }
+
+        img = rgbListToImage(imageList)
+
+        width --
+    }
+
+    img = rgbListToImage(imageList.dropLast(reduceWidthBy))
+
+    return img
+
+}
+
+fun createDistancesArrayHorizonatl(energies: Array<DoubleArray>): Array<DoubleArray> {
+    val width = energies.size
+    val height = energies[0].size
+    val distances: Array<DoubleArray> = Array(width) { DoubleArray(height) { Double.MAX_VALUE } }
+    for (y in 0 until height) {
+
+        distances[0][y] = energies[0][y]
+    }
+
+    for (x in 1 until width) {
+        for(y in 0 until height) {
+
+            val neighbors: Array<Double> = when (y) {
+                0 -> {
+                    arrayOf(distances[x - 1][y], distances[x - 1][y + 1])
+                }
+                height - 1 -> {
+                    arrayOf(distances[x - 1][y - 1], distances[x - 1][y])
+                }
+                else -> {
+                    arrayOf(distances[x - 1][y - 1], distances[x - 1][y], distances[x - 1][y + 1])
+                }
+            }
+
+            distances[x][y] = energies[x][y] + neighbors.min()!!
+        }
+    }
+    return distances
+}
+
+fun createDistancesArray(energies: Array<DoubleArray>): Array<DoubleArray> {
+    val width = energies.size
+    val height = energies[0].size
     val distances: Array<DoubleArray> = Array(width) { DoubleArray(height) { Double.MAX_VALUE } }
     for (x in 0 until width) {
 
         distances[x][0] = energies[x][0]
     }
-
 
     for (y in 1 until height) {
         for(x in 0 until width) {
@@ -62,111 +162,40 @@ fun createDistancesArray(energies: Array<DoubleArray>, height: Int, width: Int):
     }
     return distances
 }
-fun setDistances(energies: Array<DoubleArray>, height: Int, width: Int): Array<DoubleArray> {
-    val distances: Array<DoubleArray> = Array(width) { DoubleArray(height) { Double.MAX_VALUE } }
-    var firstMinEnergy = getMaxEnergy(energies, height, width)
-    var startPosition: Int = 0
 
-    for (x in 0 until width) {
+fun shortestPath(distances: Array<DoubleArray>): List<Int> {
 
-        distances[x][0] = energies[x][0]
-        /*if(energies[x][y] < firstMinEnergy) {
-            firstMinEnergy = energies[x][y]
-            startPosition = x
-        }*/
-    }
-
-
-    var currentPosition = startPosition
-    var distance = energies[startPosition][0]
-
-    for (x in 0 until width) {
-        currentPosition = x
-        for (y in 1 until height) {
-            var one = 0.0
-            var three = 0.0
-            val two = energies[currentPosition][y] + distance
-
-            if (currentPosition != 0) {
-                one = energies[currentPosition - 1][y] + distance
-
-                if (distances[currentPosition - 1][y] > one) {
-                    distances[currentPosition - 1][y] = one
-                }
-
-            } else {
-                one = energies[currentPosition][y] + distance
-
-                if (distances[currentPosition][y] > one) {
-                    distances[currentPosition][y] = one
-                }
-            }
-
-            if (currentPosition != width - 1) {
-                three = energies[currentPosition + 1][y] + distance
-
-                if (distances[currentPosition + 1][y] > three) {
-                    distances[currentPosition + 1][y] = three
-                }
-
-            } else {
-                three = energies[currentPosition][y] + distance
-
-                if (energies[currentPosition][y] > three) {
-                    distances[currentPosition][y] = three
-                }
-            }
-
-            if (distances[currentPosition][y] > two) {
-                distances[currentPosition][y] = two
-            }
-
-
-            if (one < two) {
-                currentPosition -= 1
-                distance = one
-            } else if (three < two) {
-                currentPosition += 1
-                distance = three
-            } else {
-                distance = two
-            }
-        }
-    }
-    return distances
-}
-
-fun shortestPath(distances: Array<DoubleArray>, width: Int, height: Int, energies: Array<DoubleArray>): List<Int> {
-
+    val width = distances.size
+    val height = distances[0].size
     val path = mutableListOf<Int>()
 
     var indexOfMinOfLastRow = -1
     var minOfLastRow = Double.MAX_VALUE
-    for (x in 0 until width){
-        if(distances[x][height-1] < minOfLastRow){
+    for (x in 0 until width) {
+        if (distances[x][height - 1] < minOfLastRow) {
             indexOfMinOfLastRow = x
-            minOfLastRow = distances[x][height-1]
+            minOfLastRow = distances[x][height - 1]
         }
     }
     path.add(indexOfMinOfLastRow)
 
     var xIndex = indexOfMinOfLastRow
 
-    for (y in height - 2 downTo 0){
+    for (y in height - 2 downTo 0) {
         var min = Double.MAX_VALUE
         var index = -1
 
-        if(xIndex > 0 && distances[xIndex-1][y] < min){
+        if (xIndex > 0 && distances[xIndex - 1][y] < min) {
             index = xIndex - 1
             min = distances[index][y]
         }
 
-        if(distances[xIndex][y] < min){
+        if (distances[xIndex][y] < min) {
             index = xIndex
             min = distances[index][y]
         }
 
-        if(xIndex < width -1 && distances[xIndex+1][y] < min){
+        if (xIndex < width - 1 && distances[xIndex + 1][y] < min) {
             index = xIndex + 1
             min = distances[index][y]
         }
@@ -178,237 +207,59 @@ fun shortestPath(distances: Array<DoubleArray>, width: Int, height: Int, energie
 
     return path.reversed()
 
-
-    /*val shortest: Array<Int> = Array(height) { 0 }
-
-    var minDistance = distances[0][height - 1]
-    var minDisX = 0
-    for (x in 1 until width) {
-        if (distances[x][height - 1] < minDistance) {
-            minDistance = distances[x][height - 1]
-            minDisX = x
-        }
-    }
-    var currentPosition = minDisX
-    for (y in height - 1 downTo 0) {
-        var one = 0.0
-        var three = 0.0
-        val two = distances[currentPosition][y]
-
-        if (currentPosition != 0) {
-            one = distances[currentPosition - 1][y]
-        } else {
-            one = distances[currentPosition][y]
-
-        }
-
-        if (currentPosition != width - 1) {
-            three = distances[currentPosition + 1][y]
-
-        } else {
-            three = distances[currentPosition][y]
-
-        }
-
-
-        if (one < two) {
-            currentPosition -= 1
-        } else if (three < two) {
-            currentPosition += 1
-        }
-
-        shortest[y] = currentPosition
-    }
-    *//* var minX = 0
-     val minVal = getMaxEnergy(energies, height, width)
-     for (x in 0 until width ) {
-         if (distances[x][y] < minVal && distances[x][y] != 0.0) {
-             minX = x
-         }
-     }
-     shortest[y] = minX*//*
-
-    return shortest*/
 }
 
-fun drawPath(shortest: Array<Int>, img: BufferedImage, height: Int, width: Int) {
-    for (y in 0 until height) {
-        changeColor(img, shortest[y], y, 255, 0, 0)
-    }
+fun shortestPathHorizontal(distances: Array<DoubleArray>): List<Int> {
+    val width = distances.size
+    val height = distances[0].size
 
-}
+    val path = mutableListOf<Int>()
 
-fun findSeam(energies: Array<DoubleArray>, height: Int, width: Int, img: BufferedImage) {
-    var firstMinEnergy = getMaxEnergy(energies, height, width)
-    var Xposition = 0
-    var distances: MutableMap<Int, Double> = mutableMapOf()
-    var distance = 0.0
-
-
-    for (x in 0 until width) {
-        /*val y = 0
-        if(energies[x][y] < firstMinEnergy) {
-            firstMinEnergy = energies[x][y]
-            Xposition = x
-        }*/
-
-        //changeColor(img, Xposition, 0, 255, 0, 0)
-        for (y in 1 until height) {
-            Xposition = x
-
-            if (Xposition == 0) {
-                if (energies[Xposition][y] < energies[Xposition + 1][y]) {
-                    firstMinEnergy = energies[Xposition][y]
-                } else {
-                    firstMinEnergy = energies[Xposition + 1][y]
-                    Xposition += 1
-                }
-            } else if (Xposition == width - 1) {
-                if (energies[Xposition - 1][y] < energies[Xposition][y]) {
-                    firstMinEnergy = energies[Xposition - 1][y]
-                    Xposition -= 1
-                } else {
-                    firstMinEnergy = energies[Xposition][y]
-                }
-            } else {
-                if (energies[Xposition - 1][y] < energies[Xposition][y]) {
-                    firstMinEnergy = energies[Xposition - 1][y]
-                    Xposition -= 1
-                } else {
-                    firstMinEnergy = energies[Xposition][y]
-                }
-
-                if (energies[Xposition + 1][y] < firstMinEnergy) {
-                    firstMinEnergy = energies[Xposition + 1][y]
-                    Xposition += 1
-                }
-            }
-            distance += firstMinEnergy
-            distances.put(x, distance)
-            //changeColor(img, Xposition, y, 255, 0, 0)
-
+    var indexOfMinOfLastRow = -1
+    var minOfLastRow = Double.MAX_VALUE
+    for (y in 0 until height){
+        if(distances[width - 1][y] < minOfLastRow){
+            indexOfMinOfLastRow = y
+            minOfLastRow = distances[width - 1][y]
         }
     }
-    var xMin = 0
-    var minDistance = distances[0]!!
-    for (x in 1 until width) {
-        if (distances[x]!! < minDistance) {
-            minDistance = distances[x]!!
-            xMin = x
-        }
-    }
+    path.add(indexOfMinOfLastRow)
 
-    val z = 0
-    firstMinEnergy = energies[xMin][z]
-    Xposition = xMin
+    var xIndex = indexOfMinOfLastRow
 
-    changeColor(img, Xposition, 0, 255, 0, 0)
-    for (y in 1 until height) {
+    for (x in width - 2 downTo 0){
+        var min = Double.MAX_VALUE
+        var index = -1
 
-        if (Xposition == 0) {
-            if (energies[Xposition][y] < energies[Xposition + 1][y]) {
-                firstMinEnergy = energies[Xposition][y]
-            } else {
-                firstMinEnergy = energies[Xposition + 1][y]
-                Xposition += 1
-            }
-        } else if (Xposition == width - 1) {
-            if (energies[Xposition - 1][y] < energies[Xposition][y]) {
-                firstMinEnergy = energies[Xposition - 1][y]
-                Xposition -= 1
-            } else {
-                firstMinEnergy = energies[Xposition][y]
-            }
-        } else {
-            if (energies[Xposition - 1][y] < energies[Xposition][y]) {
-                firstMinEnergy = energies[Xposition - 1][y]
-                Xposition -= 1
-            } else {
-                firstMinEnergy = energies[Xposition][y]
-            }
-
-            if (energies[Xposition + 1][y] < firstMinEnergy) {
-                firstMinEnergy = energies[Xposition + 1][y]
-                Xposition += 1
-            }
+        if(xIndex > 0 && distances[x][xIndex-1] < min){
+            index = xIndex - 1
+            min = distances[x][index]
         }
 
-        changeColor(img, Xposition, y, 255, 0, 0)
+        if(distances[x][xIndex] < min){
+            index = xIndex
+            min = distances[x][index]
+        }
 
+        if(xIndex < height -1 && distances[x][xIndex+1] < min){
+            index = xIndex + 1
+            min = distances[x][index]
+        }
+
+        xIndex = index
+        path.add(xIndex)
+        index = -1
     }
+
+    return path.reversed()
 
 
 }
 
-fun changeColor(img: BufferedImage, x: Int, y: Int, rValue: Int, gValue: Int, bValue: Int) {
-    val pixel = img.getRGB(x, y)
+fun countImageEnergy(img: BufferedImage): Array<DoubleArray> {
+    val width = img.width
+    val height = img.height
 
-    //Creating a Color object from pixel value
-    var color = Color(pixel, true)
-
-    //Retrieving the R G B values
-    var red: Int = color.getRed()
-    var green: Int = color.getGreen()
-    var blue: Int = color.getBlue()
-
-    //Modifying the RGB values
-    green = gValue
-    blue = bValue
-    red = rValue
-
-    //Creating new Color object
-    color = Color(red, green, blue)
-
-    //Setting new Color object to the image
-    img.setRGB(x, y, color.rgb)
-}
-
-fun setIntensity(img: BufferedImage, energies: Array<DoubleArray>, height: Int, width: Int) {
-
-    val maxEnergy = getMaxEnergy(energies, height, width)
-    //println(maxEnergy)
-    for (y in 0 until height) {
-        for (x in 0 until width) {
-            val intensity = (255.0 * energies[x][y] / maxEnergy).toInt()
-
-            val pixel = img.getRGB(x, y)
-
-            //Creating a Color object from pixel value
-            var color = Color(pixel, true)
-
-            //Retrieving the R G B values
-            var red: Int = color.getRed()
-            var green: Int = color.getGreen()
-            var blue: Int = color.getBlue()
-
-            //Modifying the RGB values
-            green = intensity
-            blue = intensity
-            red = intensity
-
-            //Creating new Color object
-            color = Color(red, green, blue)
-
-            //Setting new Color object to the image
-            img.setRGB(x, y, color.rgb)
-
-        }
-    }
-}
-
-fun getMaxEnergy(energies: Array<DoubleArray>, height: Int, width: Int): Double {
-    var maxEnergy = 0.0
-    for (y in 0 until height) {
-        for (x in 0 until width) {
-            if (energies[x][y] > maxEnergy) {
-                maxEnergy = energies[x][y]
-            }
-        }
-    }
-    return maxEnergy
-}
-
-fun countImageEnergy(width: Int, height: Int, img: BufferedImage): Array<DoubleArray> {
     var energies: Array<DoubleArray> = Array(width) { DoubleArray(height) { 0.0 } }
 
     for (y in 0 until height) {
@@ -467,6 +318,35 @@ fun getGradient(p1: Int, p2: Int): Int {
     val gradient = xRDifference * xRDifference + xGDifference * xGDifference + xBDifference * xBDifference
 
     return gradient
+}
+
+fun imageToRGBList(img: BufferedImage): MutableList<MutableList<Int>> {
+
+    val list = mutableListOf<MutableList<Int>>()
+
+    for (x in 0 until img.width){
+        val current = mutableListOf<Int>()
+        list.add(current)
+
+        for(y in 0 until img.height){
+            current.add(img.getRGB(x,y))
+        }
+    }
+
+    return list
+}
+
+fun rgbListToImage(rgbList: List<List<Int>>): BufferedImage {
+
+    val img = BufferedImage(rgbList.size, rgbList[0].size, TYPE_INT_RGB)
+
+    for (x in 0 until img.width){
+        for(y in 0 until img.height){
+            img.setRGB(x, y, rgbList[x][y])
+        }
+    }
+
+    return img
 }
 
 
